@@ -8883,6 +8883,7 @@ CONTAINS
             CASE(DISTRIBUTED_MATRIX_VECTOR_CMISS_TYPE)
               IF(ASSOCIATED(DISTRIBUTED_VECTOR%CMISS)) THEN
                 DO i=1,SIZE(INDICES,1)
+                  !WRITE(*,*) 'DP', INDICES(i)
                   !Allow all values to be added until dof mappings fixed. Ghost values that are added will not be propogated
                   IF(INDICES(i)>0.AND.INDICES(i)<=DISTRIBUTED_VECTOR%CMISS%DATA_SIZE) THEN
                     DISTRIBUTED_VECTOR%CMISS%DATA_DP(INDICES(i))=DISTRIBUTED_VECTOR%CMISS%DATA_DP(INDICES(i))+VALUES(i)
@@ -8962,6 +8963,7 @@ CONTAINS
           SELECT CASE(DISTRIBUTED_VECTOR%LIBRARY_TYPE)
           CASE(DISTRIBUTED_MATRIX_VECTOR_CMISS_TYPE)
             IF(ASSOCIATED(DISTRIBUTED_VECTOR%CMISS)) THEN
+              !WRITE(*,*) 'DP1', INDEX
               !Allow all values to be added until dof mappings fixed. Ghost values that are added will not be propogated
               IF(INDEX>0.AND.INDEX<=DISTRIBUTED_VECTOR%CMISS%DATA_SIZE) THEN
                 DISTRIBUTED_VECTOR%CMISS%DATA_DP(INDEX)=DISTRIBUTED_VECTOR%CMISS%DATA_DP(INDEX)+VALUE

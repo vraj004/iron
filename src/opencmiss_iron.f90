@@ -3522,6 +3522,13 @@ MODULE OpenCMISS_Iron
     MODULE PROCEDURE cmfe_Field_GeometricParametersElementLineLengthGetNumber
     MODULE PROCEDURE cmfe_Field_GeometricParametersElementLineLengthGetObj
   END INTERFACE cmfe_Field_GeometricParametersElementLineLengthGet
+  
+  !>Gets line lengths from a geometric field given an element number and element basis line number.
+  INTERFACE cmfe_Field_GeometricParametersElementVolumeGet
+    MODULE PROCEDURE cmfe_Field_GeometricParametersElementVolumeGetNumber
+    MODULE PROCEDURE cmfe_Field_GeometricParametersElementVolumeGetObj
+  END INTERFACE cmfe_Field_GeometricParametersElementVolumeGet
+  
 
  !>Returns the label for a field.
   INTERFACE cmfe_Field_LabelGet
@@ -3987,7 +3994,7 @@ MODULE OpenCMISS_Iron
 
   PUBLIC cmfe_Field_GeometricFieldGet,cmfe_Field_GeometricFieldSet
 
-  PUBLIC cmfe_Field_GeometricParametersElementLineLengthGet
+  PUBLIC cmfe_Field_GeometricParametersElementLineLengthGet, cmfe_Field_GeometricParametersElementVolumeGet
 
   PUBLIC cmfe_Field_LabelGet,cmfe_Field_LabelSet
 
@@ -5508,7 +5515,10 @@ MODULE OpenCMISS_Iron
   INTEGER(INTG), PARAMETER :: CMFE_PROBLEM_MONODOMAIN_TENTUSSCHER06_SUBTYPE = PROBLEM_MONODOMAIN_TENTUSSCHER06_SUBTYPE !<Generalised Laplace problem subtype \see OPENCMISS_ProblemSubtypes,OPENCMISS
 
   INTEGER(INTG), PARAMETER :: CMFE_PROBLEM_STRANG_REACTION_DIFFUSION_ELASTICITY_SUBTYPE = &
-    & PROBLEM_STRANG_REACTION_DIFFUSION_ELASTICITY_SUBTYPE !<Transient monodomain simple elasticity problem subtype \see OPENCMISS_ProblemSubtypes,OPENCMISS
+    & PROBLEM_STRANG_REACTION_DIFFUSION_ELASTICITY_SUBTYPE !<Transient Reaction Diffusion Simple quasi-static elasticity problem subtype \see OPENCMISS_ProblemSubtypes,OPENCMISS
+
+  INTEGER(INTG), PARAMETER :: CMFE_PROBLEM_STRANG_REAC_DIFF_GROWTH_ELASTIC_SUBTYPE = &
+    & PROBLEM_STRANG_REAC_DIFF_GROWTH_ELASTIC_SUBTYPE !<Transient reaction diffusion growth elasticity problem subtype \see OPENCMISS_ProblemSubtypes,OPENCMISS
 
   INTEGER(INTG), PARAMETER :: CMFE_PROBLEM_LE_CONTACT_TRANSFORM_REPROJECT_SUBTYPE=PROBLEM_LE_CONTACT_TRANSFORM_REPROJECT_SUBTYPE !<linear elasticity problem subject to contact constraint, transform field at load increments and reproject at Newton iterations \see OPENCMISS_ProblemSubtypes,OPENCMISS
   INTEGER(INTG), PARAMETER :: CMFE_PROBLEM_LE_CONTACT_TRANSFORM_SUBTYPE=PROBLEM_LE_CONTACT_TRANSFORM_SUBTYPE !<linear elasticity problem subject to contact constraint, transform field at load increments \see OPENCMISS_ProblemSubtypes,OPENCMISS
@@ -5645,7 +5655,8 @@ MODULE OpenCMISS_Iron
    & CMFE_PROBLEM_STANDARD_MULTI_COMPARTMENT_TRANSPORT_SUBTYPE,CMFE_PROBLEM_STANDARD_ELASTICITY_FLUID_PRESSURE_SUBTYPE, &
    & CMFE_PROBLEM_GUDUNOV_MONODOMAIN_SIMPLE_ELASTICITY_SUBTYPE,CMFE_PROBLEM_GUDUNOV_MONODOMAIN_1D3D_ELASTICITY_SUBTYPE, &
    & CMFE_PROBLEM_MONODOMAIN_ELASTICITY_W_TITIN_SUBTYPE,CMFE_PROBLEM_MONODOMAIN_ELASTICITY_VELOCITY_SUBTYPE, &
-   & CMFE_PROBLEM_FINITE_ELASTICITY_NAVIER_STOKES_ALE_SUBTYPE,CMFE_PROBLEM_STRANG_REACTION_DIFFUSION_ELASTICITY_SUBTYPE
+   & CMFE_PROBLEM_FINITE_ELASTICITY_NAVIER_STOKES_ALE_SUBTYPE,CMFE_PROBLEM_STRANG_REACTION_DIFFUSION_ELASTICITY_SUBTYPE, &
+   & CMFE_PROBLEM_STRANG_REAC_DIFF_GROWTH_ELASTIC_SUBTYPE
 
   PUBLIC CMFE_PROBLEM_QUASISTATIC_FINITE_ELASTICITY_SUBTYPE,CMFE_PROBLEM_FINITE_ELASTICITY_CELLML_SUBTYPE, &
     & CMFE_PROBLEM_FINITE_ELASTICITY_WITH_GROWTH_CELLML_SUBTYPE
@@ -28319,6 +28330,56 @@ CONTAINS
   !================================================================================================================================
   !
 
+  !>Gets the volume for a given element number by a user number.
+  SUBROUTINE cmfe_Field_GeometricParametersElementVolumeGetNumber(regionUserNumber,geometricFieldUserNumber,elementNumber, &
+    & elementVolume,err)
+    !DLLEXPORT(cmfe_Field_GeometricParametersElementLineLengthGetNumber)
+
+    !Argument variables
+    INTEGER(INTG), INTENT(IN) :: regionUserNumber !<The user number of the region containing the field to obtain the volume from
+    INTEGER(INTG), INTENT(IN) :: geometricFieldUserNumber !<The geometric field user number to obtain the volume from
+    INTEGER(INTG),  INTENT(IN) :: elementNumber !<The element to get the volume for
+    REAL(DP), INTENT(OUT) :: elementVolume !<The volume of the chosen element number
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+    !Local variables
+    TYPE(FIELD_TYPE), POINTER :: geometricField
+    TYPE(REGION_TYPE), POINTER :: region
+    TYPE(VARYING_STRING) :: localError
+
+    ENTERS("cmfe_Field_GeometricParametersElementVolumeGetNumber",err,error,*999)
+
+    NULLIFY(region)
+    NULLIFY(geometricField)
+    CALL REGION_USER_NUMBER_FIND(regionUserNumber,region,err,error,*999)
+    IF(ASSOCIATED(region)) THEN
+      CALL FIELD_USER_NUMBER_FIND(geometricFieldUserNumber,region,geometricField,err,error,*999)
+      IF(ASSOCIATED(geometricField)) THEN
+        CALL Field_GeometricParametersElementVolumeGet(geometricField,elementNumber,elementVolume, &
+          & err,error,*999)
+      ELSE
+        localError="A field with an user number of "//TRIM(NumberToVString(geometricFieldUserNumber,"*",err,error))// &
+          & " does not exist on region number "//TRIM(NumberToVString(regionUserNumber,"*",err,error))//"."
+        CALL FlagError(localError,err,error,*999)
+      END IF
+    ELSE
+      localError="A region with an user number of "//TRIM(NumberToVString(regionUserNumber,"*",err,error))//" does not exist."
+      CALL FlagError(localError,err,error,*999)
+    END IF
+
+    EXITS("cmfe_Field_GeometricParametersElementVolumeGetNumber")
+    RETURN
+999 ERRORS("cmfe_Field_GeometricParametersElementVolumeGetNumber",err,error)
+    EXITS("cmfe_Field_GeometricParametersElementVolumeGetNumber")
+    CALL cmfe_HandleError(err,error)
+    RETURN
+
+  END SUBROUTINE cmfe_Field_GeometricParametersElementVolumeGetNumber
+
+
+  !
+  !================================================================================================================================
+  !
+
   !>Gets the line length between nodes of a geometric field for a given element number and element basis line number by an object.
   SUBROUTINE cmfe_Field_GeometricParametersElementLineLengthGetObj(geometricField,elementNumber,elementLineNumber,lineLength,err)
     !DLLEXPORT(cmfe_Field_GeometricParametersElementLineLengthGetObj)
@@ -28344,6 +28405,36 @@ CONTAINS
     RETURN
 
   END SUBROUTINE cmfe_Field_GeometricParametersElementLineLengthGetObj
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Gets the volume for a given element number by an object.
+  SUBROUTINE cmfe_Field_GeometricParametersElementVolumeGetObj(geometricField,elementNumber,elementVolume,err)
+    !DLLEXPORT(cmfe_Field_GeometricParametersElementLineLengthGetObj)
+
+    !Argument variables
+    TYPE(cmfe_FieldType), INTENT(IN) :: geometricField !<The geometric field to obtain the volume from
+    INTEGER(INTG),  INTENT(IN) :: elementNumber !<The element to get the volume for
+    REAL(DP), INTENT(OUT) :: elementVolume !<The volume of the chosen element 
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+    !Local variables
+
+    ENTERS("cmfe_Field_GeometricParametersElementVolumeGetObj",err,error,*999)
+
+    CALL Field_GeometricParametersElementVolumeGet(geometricField%field,elementNumber,elementVolume, &
+      & err,error,*999)
+
+    EXITS("cmfe_Field_GeometricParametersElementVolumeGetObj")
+    RETURN
+999 ERRORS("cmfe_Field_GeometricParametersElementVolumeGetObj",err,error)
+    EXITS("cmfe_Field_GeometricParametersElementVolumeGetObj")
+    CALL cmfe_HandleError(err,error)
+    RETURN
+
+  END SUBROUTINE cmfe_Field_GeometricParametersElementVolumeGetObj
+
 
   !
   !================================================================================================================================

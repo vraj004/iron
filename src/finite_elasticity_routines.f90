@@ -119,7 +119,8 @@ MODULE FINITE_ELASTICITY_ROUTINES
     & FiniteElasticity_EquationsSetSpecificationSet,FiniteElasticity_ProblemSpecificationSet,FINITE_ELASTICITY_PROBLEM_SETUP, &
     & FiniteElasticity_ContactProblemSpecificationSet,FiniteElasticity_ContactProblemSetup, & 
     & FINITE_ELASTICITY_POST_SOLVE,FINITE_ELASTICITY_POST_SOLVE_OUTPUT_DATA, &
-    & FINITE_ELASTICITY_PRE_SOLVE,FiniteElasticity_ControlTimeLoopPreLoop,FiniteElasticity_ControlLoadIncrementLoopPostLoop, &
+    & FINITE_ELASTICITY_PRE_SOLVE,FiniteElasticity_ControlTimeLoopPreLoop, & !FiniteElasticity_ControlLoadIncrementLoopPreLoop, &
+    & FiniteElasticity_ControlLoadIncrementLoopPostLoop, &
     & EVALUATE_CHAPELLE_FUNCTION, GET_DARCY_FINITE_ELASTICITY_PARAMETERS, &
     & FiniteElasticity_GaussDeformationGradientTensor,FINITE_ELASTICITY_LOAD_INCREMENT_APPLY, &
     & FiniteElasticity_StrainCalculate, &
@@ -2609,7 +2610,7 @@ CONTAINS
             CALL FlagError("The number of dimensions of "//TRIM(NUMBER_TO_VSTRING(numberOfDimensions,"*",ERR,ERROR))// &
               & " is invalid.",err,error,*999)
           END SELECT
-          CALL Field_NumberOfComponentsCheck(strainField,strainFieldVariableType,6,err,error,*999)
+          CALL Field_NumberOfComponentsCheck(strainField,strainFieldVariableType,numberOfComponents,err,error,*999)
           DO componentIdx=1,numberOfComponents
             CALL Field_ComponentInterpolationCheck(strainField,strainFieldVariableType,componentIdx, &
               & FIELD_GAUSS_POINT_BASED_INTERPOLATION,err,error,*999)
@@ -2817,7 +2818,6 @@ CONTAINS
     ELSE
       CALL FlagError("Equations set is not associated.",err,error,*999)
     ENDIF
-
     EXITS("FiniteElasticity_StrainCalculate")
     RETURN
 999 ERRORSEXITS("FiniteElasticity_StrainCalculate",err,error)
@@ -4786,7 +4786,8 @@ CONTAINS
         & .AND. EQUATIONS_SET_SUBTYPE/=EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_STATIC_INRIA_SUBTYPE &
         & .AND. EQUATIONS_SET_SUBTYPE/=EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_HOLMES_MOW_SUBTYPE &
         & .AND. EQUATIONS_SET_SUBTYPE/=EQUATIONS_SET_ELASTICITY_FLUID_PRES_HOLMES_MOW_ACTIVE_SUBTYPE &
-        & .AND. EQUATIONS_SET_SUBTYPE/=EQUATIONS_SET_NEARLY_INCOMPRESSIBLE_MOONEY_RIVLIN_SUBTYPE
+        & .AND. EQUATIONS_SET_SUBTYPE/=EQUATIONS_SET_NEARLY_INCOMPRESSIBLE_MOONEY_RIVLIN_SUBTYPE !& 
+        !& .AND. EQUATIONS_SET_SUBTYPE/=EQUATIONS_SET_CONSTITUTIVE_AND_GROWTH_LAW_IN_CELLML_SUBTYPE
 
     NUMBER_OF_DIMENSIONS = EQUATIONS_SET%REGION%COORDINATE_SYSTEM%NUMBER_OF_DIMENSIONS
 
@@ -4925,7 +4926,7 @@ CONTAINS
               & EQUATIONS_SET_TRANSVERSE_ISOTROPIC_HUMPHREY_YIN_SUBTYPE, &
               & EQUATIONS_SET_HOLZAPFEL_OGDEN_ACTIVECONTRACTION_SUBTYPE)
               IF(.NOT.ASSOCIATED(EQUATIONS_SET%GEOMETRY%FIBRE_FIELD)) CALL FlagError( &
-                & "Finite elascitiy equations require a fibre field.",ERR,ERROR,*999)
+                & "Finite elasticity equations require a fibre field.",ERR,ERROR,*999)
             CASE DEFAULT
               LOCAL_ERROR="The third equations set specification of "// &
                 & TRIM(NUMBER_TO_VSTRING(EQUATIONS_SET_SUBTYPE,"*",ERR,ERROR))// &
@@ -5219,7 +5220,7 @@ CONTAINS
                 CALL FIELD_DATA_TYPE_SET_AND_LOCK(EQUATIONS_SET%DEPENDENT%DEPENDENT_FIELD,FIELD_U2_VARIABLE_TYPE, &
                   & FIELD_DP_TYPE,ERR,ERROR,*999)
                 CALL FIELD_NUMBER_OF_COMPONENTS_GET(EQUATIONS_SET%GEOMETRY%GEOMETRIC_FIELD,FIELD_U_VARIABLE_TYPE, &
-                  & NUMBER_OF_DIMENSIONS,ERR,ERROR,*999)
+                  & NUMBER_OF_COMPONENTS,ERR,ERROR,*999)
                 CALL FIELD_NUMBER_OF_COMPONENTS_SET_AND_LOCK(EQUATIONS_SET%DEPENDENT%DEPENDENT_FIELD,FIELD_U_VARIABLE_TYPE, &
                   & NUMBER_OF_COMPONENTS,ERR,ERROR,*999)
                 CALL FIELD_NUMBER_OF_COMPONENTS_SET_AND_LOCK(EQUATIONS_SET%DEPENDENT%DEPENDENT_FIELD, &
@@ -5360,6 +5361,7 @@ CONTAINS
                   & NUMBER_OF_DIMENSIONS,ERR,ERROR,*999)
                 CALL FIELD_NUMBER_OF_COMPONENTS_CHECK(EQUATIONS_SET_SETUP%FIELD,FIELD_U_VARIABLE_TYPE,NUMBER_OF_COMPONENTS, &
                   & ERR,ERROR,*999)
+
                 CALL FIELD_NUMBER_OF_COMPONENTS_CHECK(EQUATIONS_SET_SETUP%FIELD,FIELD_DELUDELN_VARIABLE_TYPE, &
                   & NUMBER_OF_COMPONENTS,ERR,ERROR,*999)
                 CALL FIELD_NUMBER_OF_COMPONENTS_CHECK(EQUATIONS_SET_SETUP%FIELD,FIELD_U1_VARIABLE_TYPE,NUMBER_OF_COMPONENTS_2, &
@@ -8417,8 +8419,10 @@ CONTAINS
             CASE(PROBLEM_NO_SUBTYPE)
               ! do nothing ???
             CASE(PROBLEM_FINITE_ELASTICITY_CELLML_SUBTYPE, &
-              PROBLEM_FINITE_ELASTICITY_WITH_GROWTH_CELLML_SUBTYPE)
-              IF(CONTROL_LOOP%PROBLEM%SPECIFICATION(3)==PROBLEM_FINITE_ELASTICITY_WITH_GROWTH_CELLML_SUBTYPE) THEN
+              PROBLEM_FINITE_ELASTICITY_WITH_GROWTH_CELLML_SUBTYPE, &
+              PROBLEM_STRANG_REAC_DIFF_GROWTH_ELASTIC_SUBTYPE)
+              IF(CONTROL_LOOP%PROBLEM%SPECIFICATION(3)==PROBLEM_FINITE_ELASTICITY_WITH_GROWTH_CELLML_SUBTYPE &
+                .OR.CONTROL_LOOP%PROBLEM%SPECIFICATION(3)==PROBLEM_STRANG_REAC_DIFF_GROWTH_ELASTIC_SUBTYPE ) THEN
                 IF(SOLVER%GLOBAL_NUMBER==1) THEN
                   CELLMLSOLVER=.TRUE.
                   NONLINEARSOLVER=.FALSE.
@@ -8447,8 +8451,10 @@ CONTAINS
                         VALID_SUBTYPE=.TRUE.
                         !compute the strain field
                         DEPENDENT_FIELD=>EQUATIONS_SET%EQUATIONS%INTERPOLATION%DEPENDENT_FIELD
+
                         CALL FiniteElasticity_StrainCalculate(EQUATIONS_SET,DEPENDENT_FIELD, &
                           & FIELD_U1_VARIABLE_TYPE,ERR,ERROR,*999)
+
                         !check for a linked CellML solver 
                         CELLML_SOLVER=>SOLVER%NONLINEAR_SOLVER%NEWTON_SOLVER%CELLML_EVALUATOR_SOLVER
                         IF(ASSOCIATED(CELLML_SOLVER)) THEN
