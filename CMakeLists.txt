@@ -5,8 +5,11 @@ include(CMakeDependentOption)
 set(_CORRECT_CMAKE_MODULE_PATH FALSE)
 # First check if the CMAKE_MODULE_PATH is already set properly.
 foreach(_PATH ${CMAKE_MODULE_PATH})
-    if (EXISTS "${_PATH}/OCMiscFunctions.cmake")
+    if (EXISTS "${_PATH}/OpenCMISS/OCMiscFunctions.cmake")
         set(_CORRECT_CMAKE_MODULE_PATH TRUE)
+        if (NOT DEFINED IRON_CMAKE_MODULE_PATH)
+            set(IRON_CMAKE_MODULE_PATH "${_PATH}" CACHE STRING "Location of OpenCMISS CMake modules.")
+        endif ()
         break()
     endif ()
 endforeach()
@@ -30,14 +33,40 @@ endif ()
 
 string(TOUPPER "${CMAKE_BUILD_TYPE}" _uppercase_CMAKE_BUILD_TYPE)
 if (_uppercase_CMAKE_BUILD_TYPE MATCHES "^(DEBUG|RELWITHDEBINFO)$")
-  set(IS_DEBUG_BUILD TRUE)
+    set(IS_DEBUG_BUILD TRUE)
 else()
-  set(IS_DEBUG_BUILD FALSE)
+    set(IS_DEBUG_BUILD FALSE)
 endif()
 
+set(IRON_REVISION "no-rev")
+if (GIT_FOUND)
+    git_get_revision(IRON_REVISION_LONG)
+    string(SUBSTRING ${IRON_REVISION_LONG} 0 6 IRON_REVISION)
+    git_is_dirty(_IS_DIRTY)
+    if (_IS_DIRTY)
+        set(ZINC_REVISION "${IRON_REVISION}*")
+    endif ()
+endif()
+
+set(IRON_RELEASE FALSE)
+if(IRON_RELEASE)
+    set(IRON_DEVELOPER_VERSION "")
+else()
+    set(IRON_DEVELOPER_VERSION ".dev0${IRON_REVISION}")
+endif()
+
+
 # Options for building iron
-option(IRON_BUILD_SHARED_LIBRARY "Build a shared iron library." ON)
-option(IRON_BUILD_STATIC_LIBRARY "Build a static iron library." OFF)
+if (DEFINED BUILD_SHARED_LIBS AND BUILD_SHARED_LIBS)
+    set(IRON_BUILD_SHARED_LIBRARY ON CACHE BOOL "Build a shared iron library." FORCE)
+    set(IRON_BUILD_STATIC_LIBRARY OFF CACHE BOOL "Build a static iron library." FORCE)
+elseif (DEFINED BUILD_SHARED_LIBS AND NOT BUILD_SHARED_LIBS)
+    set(IRON_BUILD_SHARED_LIBRARY OFF CACHE BOOL "Build a shared iron library." FORCE)
+    set(IRON_BUILD_STATIC_LIBRARY ON CACHE BOOL "Build a static iron library." FORCE)
+else ()
+    option(IRON_BUILD_SHARED_LIBRARY "Build a shared iron library." ON)
+    option(IRON_BUILD_STATIC_LIBRARY "Build a static iron library." OFF)
+endif ()
 set(REAL_PRECISION "double" CACHE STRING "Real precision (single|double)")
 option(WITH_CELLML "Build iron with CellML support" ON)
 option(WITH_FIELDML "Build iron with FieldML support" ON)
@@ -54,11 +83,19 @@ option(PRINT_CONFIG_SUMMARY "Show a summary of the configuration." TRUE)
 set(PACKAGE_CONFIG_DIR "cmake" CACHE STRING "Directory for package config files (relative to CMAKE_INSTALL_PREFIX)")
 
 # Handle instrumentation choices.
-set(IRON_INSTRUMENTATION "none" CACHE STRING "Specify the instrumentation to use.")
-if (DEFINED FE_INSTRUMENTATION)
-    set(IRON_INSTRUMENTATION "${FE_INSTRUMENTATION}" CACHE STRING "Specify the instrumentation to use.")
+#set(${OC_INSTRUMENTATION} ${${OC_INSTRUMENTATION}} PARENT_SCOPE)
+set(IRON_INSTRUMENTATION ${OPENCMISS_INSTRUMENTATION})
+
+if(NOT DEFINED OPENCMISS_INSTRUMENTATION)
+  set(IRON_INSTRUMENTATION "none" CACHE STRING "Specify the instrumentation to use.")
+  if (DEFINED FE_INSTRUMENTATION)
+      set(IRON_INSTRUMENTATION "${FE_INSTRUMENTATION}" CACHE STRING "Specify the instrumentation to use.")
+  endif ()
+  set(OPENCMISS_INSTRUMENTATION ${IRON_INSTRUMENTATION})
 endif ()
-set(OPENCMISS_INSTRUMENTATION ${IRON_INSTRUMENTATION})
+
+
+message(STATUS "Iron::Instrumentation: ${OPENCMISS_INSTRUMENTATION}")
 
 # Bindings options
 find_program(VIRTUALENV_EXEC virtualenv)
@@ -90,8 +127,10 @@ else()
   set(WORKING_REAL_PRECISION_DOUBLE)
 endif()
 
-if(NOT IRON_BUILD_SHARED_LIBRARY AND NOT IRON_BUILD_STATIC_LIBRARY )
-  message(FATAL_ERROR "You have to build at least one of the types of libraries (shared or static)." )
+if(NOT IRON_BUILD_SHARED_LIBRARY AND NOT IRON_BUILD_STATIC_LIBRARY)
+  message(FATAL_ERROR "You have to build one of the types of libraries (shared or static)." )
+elseif(IRON_BUILD_SHARED_LIBRARY AND IRON_BUILD_STATIC_LIBRARY)
+  message(FATAL_ERROR "You have to build either a shared or static library, you cannot build both." )
 endif()
 
 include(OCMiscFunctions)
@@ -155,6 +194,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmiss.in.h ${CMAKE_CURRENT_BINA
 # Populates the IRON_XX_SRC variables
 include(Sources)
 
+set(BUILD_SHARED_LIBS ${IRON_BUILD_SHARED_LIBRARY})
 if(MSVC)
     # Need separate C/Fortran code due to Project natures in VS
     set(IRON_TARGETS iron iron_static_C)
@@ -171,7 +211,6 @@ if(MSVC)
 else()
     set(IRON_TARGETS iron)
     add_library(iron ${IRON_SRC})
-    target_compile_options(iron PUBLIC $<BUILD_INTERFACE:-cpp>)
     source_group(headers FILES ${IRON_HEADERS})
     source_group(src FILES ${IRON_Fortran_SRC} ${IRON_C_SRC})
 endif()
@@ -274,7 +313,7 @@ endif()
 add_subdirectory(bindings)
 
 # Install steps
-install(TARGETS iron
+install(TARGETS ${IRON_TARGETS}
     EXPORT iron-config
     RUNTIME DESTINATION bin
     COMPONENT Runtime
